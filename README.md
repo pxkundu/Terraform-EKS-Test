@@ -26,8 +26,8 @@ terraform/
 ## Prerequisites
 
 - AWS CLI installed and configured with the "exam3" profile (`aws configure --profile exam3`).
-- Terraform &gt;= 1.0.0 installed.
-- Appropriate IAM permissions for the "exam3" profile to create VPC, EKS, EC2, and IAM resources.
+- Terraform >= 1.0.0 installed.
+- Appropriate IAM permissions for the "exam3" profile to create and delete VPC, EKS, EC2, and IAM resources.
 
 ## Setup and Deployment
 
@@ -101,16 +101,53 @@ terraform/
 
 ## Cleanup
 
-To destroy the resources and avoid costs:
+To destroy all resources created by this project and avoid ongoing AWS costs, follow these steps:
 
-1. Navigate to `environments/dev`
-2. Run:
+1. Navigate to the `environments/dev` directory:
+
+   ```bash
+   cd environments/dev
+   ```
+
+2. Ensure the "exam3" AWS profile is set:
+
+   ```bash
+   export AWS_PROFILE=exam3
+   ```
+
+   Verify the profile:
+
+   ```bash
+   aws sts get-caller-identity --profile exam3
+   ```
+
+3. Run the destroy command:
 
    ```bash
    terraform destroy -var-file=terraform.tfvars
    ```
 
-   Confirm with `yes` when prompted. Ensure `AWS_PROFILE=exam3` is set.
+   - Confirm with `yes` when prompted.
+   - This will delete all resources (EKS cluster, VPC, subnets, IAM roles, etc.) created by the Terraform configuration.
+   - The process may take 10-15 minutes due to EKS cluster deletion.
+
+4. Verify resource deletion:
+
+   ```bash
+   aws eks describe-cluster --name dev-eks-cluster --profile exam3
+   aws ec2 describe-vpcs --profile exam3
+   ```
+
+   - The EKS cluster should return a "not found" error.
+   - No VPCs with the tag `kubernetes.io/cluster/dev-eks-cluster` should remain.
+
+5. (Optional) Remove the Terraform state files to clean up the local environment:
+
+   ```bash
+   rm terraform.tfstate terraform.tfstate.backup
+   ```
+
+   **Warning**: Only remove state files if you are certain no further management of these resources is needed, as this prevents Terraform from tracking previously created resources.
 
 ## Troubleshooting
 
@@ -125,9 +162,4 @@ To destroy the resources and avoid costs:
   ```
 - **Inline Policy Warning**: The `terraform-aws-modules/eks/aws` module may show a deprecation warning for `inline_policy`. This can be ignored for now or resolved by updating the module version in `modules/eks/main.tf` to `~> 20.0` and running `terraform init -upgrade`.
 - **Permission Issues**: Ensure the "exam3" profile has permissions for EKS, VPC, EC2, and IAM actions.
-
-## Generate output.tf file
-
-terraform output -raw kubeconfig > environments/dev/kubeconfig.yaml
-export KUBECONFIG=$(pwd)/environments/dev/kubeconfig.yaml
-kubectl get nodes
+- **Destroy Failures**: If the destroy process fails, check for dependent resources (e.g., ENIs or security groups) in the AWS Console and manually delete them, then re-run `terraform destroy`.
