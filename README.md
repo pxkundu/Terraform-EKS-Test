@@ -125,3 +125,9 @@ To destroy the resources and avoid costs:
   ```
 - **Inline Policy Warning**: The `terraform-aws-modules/eks/aws` module may show a deprecation warning for `inline_policy`. This can be ignored for now or resolved by updating the module version in `modules/eks/main.tf` to `~> 20.0` and running `terraform init -upgrade`.
 - **Permission Issues**: Ensure the "exam3" profile has permissions for EKS, VPC, EC2, and IAM actions.
+
+## Generate output.tf file
+
+terraform output -raw kubeconfig > environments/dev/kubeconfig.yaml
+export KUBECONFIG=$(pwd)/environments/dev/kubeconfig.yaml
+kubectl get nodes
