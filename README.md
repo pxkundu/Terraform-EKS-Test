@@ -23,6 +23,20 @@ terraform/
 └── README.md
 ```
 
+## Screenshots
+
+### Cluster Overview
+![Nodes Overview](images/Nodes.png)
+
+### Namespaces
+![Namespaces](images/Namespaces.png)
+
+### Pods
+![Pods](images/PODs.png)
+
+### Audit Logs
+![Audit Logs](images/Audit.png)
+
 ## Prerequisites
 
 - AWS CLI installed and configured with the "exam3" profile (`aws configure --profile exam3`).
