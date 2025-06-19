@@ -26,3 +26,13 @@ users:
     token: ${data.aws_eks_cluster_auth.cluster.token}
 EOT
 }
+
+output "oidc_provider_arn" {
+  description = "OIDC provider ARN for IRSA"
+  value       = module.eks.oidc_provider_arn
+}
+
+output "oidc_provider_url" {
+  description = "OIDC provider URL for IRSA"
+  value       = module.eks.oidc_provider
+}

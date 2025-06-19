@@ -81,47 +81,90 @@ terraform/
    kubectl get nodes
    ```
 
+## Automated NGINX Deployment
+
+After the EKS cluster is successfully deployed, the workflow automatically deploys an NGINX DaemonSet to all EKS nodes using a Kubernetes manifest and a Terraform `null_resource`.
+
+### How it Works
+- The manifest is located at `scripts/nginx-daemonset.yaml`.
+- A `null_resource` in `main.tf` runs a local `kubectl apply` command after EKS provisioning, using the generated `kubeconfig.yaml`.
+- This ensures an NGINX pod is scheduled on every node in the cluster automatically, with no manual steps required.
+
+### Requirements
+- `kubectl` must be installed and available in your PATH on the machine running Terraform.
+- The kubeconfig output from Terraform must be saved as `kubeconfig.yaml` in the `terraform/` directory (as described in the setup steps).
+
+### NGINX DaemonSet Manifest
+The manifest used is:
+
+```yaml
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nginx-daemonset
+  labels:
+    app: nginx
+spec:
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:latest
+        ports:
+        - containerPort: 80
+```
+
+### What Happens
+- After `terraform apply`, Terraform will:
+  1. Deploy the EKS cluster and nodes.
+  2. Output the kubeconfig (see setup step 7).
+  3. Automatically apply the NGINX DaemonSet manifest to the cluster.
+- You can verify the deployment with:
+
+  ```bash
+  export KUBECONFIG=$(pwd)/kubeconfig.yaml
+  kubectl get daemonset nginx-daemonset -A
+  kubectl get pods -A
+  ```
+
+## Karpenter Integration (Best Practice)
+
+Karpenter is automatically installed and configured as a node autoscaler for your EKS cluster using Terraform best practices.
+
+### How it Works
+- Terraform provisions all required IAM roles and policies for Karpenter using IRSA (IAM Roles for Service Accounts).
+- The Karpenter controller is installed via the official Helm chart after EKS is ready.
+- A sample Karpenter Provisioner manifest is provided in `modules/karpenter/provisioner.yaml` (apply with `kubectl` or the Kubernetes provider).
+
+### Requirements
+- `kubectl` and `helm` must be installed and available in your PATH.
+- The EKS OIDC provider must be enabled (handled automatically by the EKS module).
+
+### Customization
+- You can edit the `provisioner.yaml` to control which instance types, zones, and other node properties Karpenter manages.
+- The default instance profile and Helm chart version can be adjusted in the Karpenter module block in `main.tf`.
+
+### Verification
+After `terraform apply`, verify Karpenter is running and ready to scale nodes:
+
+```bash
+export KUBECONFIG=$(pwd)/kubeconfig.yaml
+kubectl get pods -n karpenter
+kubectl get provisioners
+```
+
+To trigger autoscaling, deploy a workload that exceeds current node capacity. Karpenter will provision new nodes as needed.
+
+For more details, see the [Karpenter documentation](https://karpenter.sh/docs/).
+
 ## Testing
 
 - Verify cluster endpoint:
 
-  ```bash
-  kubectl cluster-info
   ```
-- Confirm 2 t3.medium nodes are running:
-
-  ```bash
-  kubectl get nodes
-  ```
-- Check VPC and subnets:
-
-  ```bash
-  aws ec2 describe-vpcs --profile exam3
-  ```
-
-## Cleanup
-
-To destroy the resources and avoid costs:
-
-1. Navigate to `environments/dev`
-2. Run:
-
-   ```bash
-   terraform destroy -var-file=terraform.tfvars
-   ```
-
-   Confirm with `yes` when prompted. Ensure `AWS_PROFILE=exam3` is set.
-
-## Troubleshooting
-
-- **Sensitive Output Error**: If you encounter an error about sensitive values in `kubeconfig`, add `sensitive = true` to the `kubeconfig` output in `outputs.tf`:
-
-  ```hcl
-  output "kubeconfig" {
-    description = "Kubeconfig file for cluster access"
-    value       = module.eks.kubeconfig
-    sensitive   = true
-  }
-  ```
-- **Inline Policy Warning**: The `terraform-aws-modules/eks/aws` module may show a deprecation warning for `inline_policy`. This can be ignored for now or resolved by updating the module version in `modules/eks/main.tf` to `~> 20.0` and running `terraform init -upgrade`.
-- **Permission Issues**: Ensure the "exam3" profile has permissions for EKS, VPC, EC2, and IAM actions.
