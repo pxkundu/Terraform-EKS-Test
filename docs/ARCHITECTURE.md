@@ -14,35 +14,15 @@ The system consists of two main microservices:
 
 These services are decoupled using Amazon SQS for asynchronous communication.
 
-### High-Level ASCII Diagram
+### High-Level Architecture Diagram (Mermaid)
 
-```
-+-------------------+      +-------------------+      +-------------------+
-|                   |      |                   |      |                   |
-|  Client/External  +----->+  API Gateway      +----->+  Notification API |
-|  Systems          |      |                   |      |  (ECS Fargate)    |
-+-------------------+      +-------------------+      +-------------------+
-                                                           |
-                                                           v
-                                                  +-------------------+
-                                                  |                   |
-                                                  |   Amazon SQS      |
-                                                  |   (Queue)         |
-                                                  +-------------------+
-                                                           |
-                                                           v
-                                                  +-------------------+
-                                                  |                   |
-                                                  | Email Sender      |
-                                                  | (AWS Lambda)      |
-                                                  +-------------------+
-                                                           |
-                                                           v
-                                                  +-------------------+
-                                                  |                   |
-                                                  | Amazon SES        |
-                                                  | (Email Service)   |
-                                                  +-------------------+
+```mermaid
+flowchart TD
+    A["Client/External Systems"] --> B["API Gateway"]
+    B --> C["Notification API (ECS Fargate)"]
+    C --> D["Amazon SQS (Queue)"]
+    D --> E["Email Sender (AWS Lambda)"]
+    E --> F["Amazon SES (Email Service)"]
 ```
 
 ---
@@ -181,16 +161,16 @@ Amazon SES
 
 ```mermaid
 flowchart TD
-    A[Client] --> B[API Gateway]
-    B --> C[Notification API (ECS Fargate)]
-    C --> D[Amazon SQS]
-    D --> E[Email Sender (Lambda)]
-    E --> F[Amazon SES]
-    B -.->|Auth| G[Cognito/IAM]
-    C -.->|Logs| H[CloudWatch]
+    A["Client"] --> B["API Gateway"]
+    B --> C["Notification API (ECS Fargate)"]
+    C --> D["Amazon SQS"]
+    D --> E["Email Sender (Lambda)"]
+    E --> F["Amazon SES"]
+    B -.->|Auth| G["Cognito/IAM"]
+    C -.->|Logs| H["CloudWatch"]
     E -.->|Logs| H
     F -.->|Delivery Reports| H
-    C -.->|Tracing| I[X-Ray]
+    C -.->|Tracing| I["X-Ray"]
     E -.->|Tracing| I
 ```
 
