@@ -1,0 +1,129 @@
+# Staging Environment Variables
+# This file contains variables specific to the staging environment
+
+variables:
+  # Environment Configuration
+  environment: 'staging'
+  environmentDisplayName: 'Staging'
+  
+  # Azure Subscription Configuration
+  stagingServiceConnection: 'Azure-Staging-ServiceConnection'
+  stagingSubscriptionId: '$(STAGING_SUBSCRIPTION_ID)'
+  stagingTenantId: '$(STAGING_TENANT_ID)'
+  
+  # Resource Group Configuration
+  stagingResourceGroupName: 'openwebui-staging-rg'
+  stagingLocation: 'eastus'
+  
+  # AKS Configuration
+  stagingClusterName: 'openwebui-staging-aks'
+  stagingKubernetesVersion: '1.27'
+  stagingNodeCount: 3
+  stagingVmSize: 'Standard_D4s_v3'
+  stagingMinNodeCount: 2
+  stagingMaxNodeCount: 8
+  
+  # Network Configuration
+  stagingVnetName: 'openwebui-staging-vnet'
+  stagingVnetCidr: '10.1.0.0/16'
+  stagingPrivateSubnets: '["10.1.1.0/24", "10.1.2.0/24"]'
+  stagingPublicSubnets: '["10.1.101.0/24", "10.1.102.0/24"]'
+  
+  # Database Configuration
+  stagingDatabaseName: 'openwebui_staging'
+  stagingDatabaseUsername: 'dbadmin'
+  stagingPostgresVersion: '15'
+  stagingDatabaseSku: 'GP_Standard_D2s_v3'
+  stagingDatabaseStorageMb: 131072
+  stagingDatabaseBackupRetentionDays: 14
+  stagingDatabaseGeoRedundantBackup: true
+  
+  # Storage Configuration (Terraform State)
+  stagingStorageAccountName: 'tfstatestagingsa$(uniqueString)'
+  stagingContainerName: 'tfstate'
+  stagingStateKey: 'staging/terraform.tfstate'
+  
+  # OpenAI Configuration
+  stagingOpenAILocation: 'eastus'
+  stagingOpenAISkuName: 'S0'
+  
+  # Monitoring Configuration
+  stagingLogAnalyticsRetentionDays: 60
+  stagingEnableDetailedMonitoring: true
+  
+  # Security Configuration
+  stagingEnablePrivateEndpoints: true
+  stagingAllowAzureServices: false
+  stagingEnableAzureAD: true
+  
+  # Cost Configuration
+  stagingBudgetAmount: 500
+  stagingCostAlertThreshold: 75
+  
+  # Deployment Configuration
+  stagingAutoApprove: false
+  stagingSkipManualValidation: false
+  stagingEnableRollback: true
+  
+  # Testing Configuration
+  stagingRunIntegrationTests: true
+  stagingRunPerformanceTests: true
+  stagingRunSecurityTests: true
+  
+  # Application Configuration
+  stagingApplicationReplicas: 2
+  stagingApplicationCpuLimit: '1000m'
+  stagingApplicationMemoryLimit: '2Gi'
+  stagingApplicationCpuRequest: '500m'
+  stagingApplicationMemoryRequest: '1Gi'
+  
+  # Ingress Configuration
+  stagingIngressEnabled: true
+  stagingIngressHost: 'openwebui-staging.company.com'
+  stagingTlsEnabled: true
+  
+  # Backup Configuration
+  stagingBackupEnabled: true
+  stagingBackupSchedule: '0 1 * * *'  # Daily at 1 AM
+  
+  # Scaling Configuration
+  stagingHpaEnabled: true
+  stagingHpaMinReplicas: 2
+  stagingHpaMaxReplicas: 6
+  stagingHpaTargetCpuUtilization: 70
+  
+  # High Availability Configuration
+  stagingEnableHA: true
+  stagingAvailabilityZones: '["1", "2", "3"]'
+  
+  # Performance Configuration
+  stagingEnablePerformanceMonitoring: true
+  stagingPerformanceThresholds: |
+    cpu: 80
+    memory: 85
+    disk: 90
+    network: 75
+  
+  # Security Hardening
+  stagingEnableNetworkPolicies: true
+  stagingEnablePodSecurityPolicies: true
+  stagingEnableImageScanning: true
+  
+  # Compliance Configuration
+  stagingEnableAuditLogging: true
+  stagingComplianceFramework: 'SOC2'
+  
+  # Disaster Recovery
+  stagingEnableDR: true
+  stagingDRRegion: 'westus2'
+  stagingRPO: 4  # hours
+  stagingRTO: 2  # hours
+  
+  # Load Testing Configuration
+  stagingLoadTestEnabled: true
+  stagingLoadTestDuration: 300  # seconds
+  stagingLoadTestUsers: 50
+  
+  # Cleanup Configuration
+  stagingAutoCleanup: false
+  stagingRetentionDays: 30

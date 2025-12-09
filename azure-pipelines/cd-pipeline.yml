@@ -1,0 +1,263 @@
+# CD Pipeline for Azure Infrastructure
+# This pipeline deploys the Terraform infrastructure to multiple environments
+
+trigger: none # Only triggered by CI pipeline or manual execution
+
+pr: none
+
+parameters:
+- name: sourceVersion
+  displayName: 'Source Version'
+  type: string
+  default: ''
+- name: sourceBranch
+  displayName: 'Source Branch'
+  type: string
+  default: ''
+- name: buildNumber
+  displayName: 'Build Number'
+  type: string
+  default: ''
+- name: deployToDev
+  displayName: 'Deploy to Development'
+  type: boolean
+  default: true
+- name: deployToStaging
+  displayName: 'Deploy to Staging'
+  type: boolean
+  default: false
+- name: deployToProduction
+  displayName: 'Deploy to Production'
+  type: boolean
+  default: false
+
+variables:
+- template: variables/common.yml
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+stages:
+- stage: PreDeployment
+  displayName: 'Pre-Deployment Validation'
+  jobs:
+  - job: DownloadArtifacts
+    displayName: 'Download Build Artifacts'
+    steps:
+    - task: DownloadBuildArtifacts@0
+      displayName: 'Download Terraform Artifacts'
+      inputs:
+        buildType: 'specific'
+        project: '$(System.TeamProjectId)'
+        pipeline: 'CI-Pipeline'
+        buildVersionToDownload: 'specific'
+        buildId: '$(resources.pipeline.CI-Pipeline.runID)'
+        downloadType: 'single'
+        artifactName: 'terraform-infrastructure'
+        downloadPath: '$(System.ArtifactsDirectory)'
+    
+    - task: ExtractFiles@1
+      displayName: 'Extract Terraform Code'
+      inputs:
+        archiveFilePatterns: '$(System.ArtifactsDirectory)/terraform-infrastructure/terraform-*.zip'
+        destinationFolder: '$(System.DefaultWorkingDirectory)/terraform'
+        cleanDestinationFolder: true
+    
+    - task: ExtractFiles@1
+      displayName: 'Extract Pipeline Scripts'
+      inputs:
+        archiveFilePatterns: '$(System.ArtifactsDirectory)/terraform-infrastructure/scripts-*.zip'
+        destinationFolder: '$(System.DefaultWorkingDirectory)/scripts'
+        cleanDestinationFolder: false
+
+# Development Environment Deployment
+- stage: DeployDev
+  displayName: 'Deploy to Development'
+  dependsOn: PreDeployment
+  condition: and(succeeded(), eq('${{ parameters.deployToDev }}', true))
+  variables:
+  - template: variables/dev.yml
+  jobs:
+  - deployment: DeployToDevEnvironment
+    displayName: 'Deploy to Development Environment'
+    environment: 'Development'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - template: templates/deploy-environment.yml
+            parameters:
+              environment: 'dev'
+              serviceConnection: '$(devServiceConnection)'
+              subscriptionId: '$(devSubscriptionId)'
+              resourceGroupName: '$(devResourceGroupName)'
+              storageAccountName: '$(devStorageAccountName)'
+              containerName: '$(devContainerName)'
+              stateKey: 'dev/terraform.tfstate'
+              terraformVarsFile: 'environments/dev/terraform.tfvars'
+              autoApprove: true
+
+  - job: PostDeploymentTestsDev
+    displayName: 'Post-Deployment Tests - Dev'
+    dependsOn: DeployToDevEnvironment
+    steps:
+    - template: templates/post-deploy-tests.yml
+      parameters:
+        environment: 'dev'
+        resourceGroupName: '$(devResourceGroupName)'
+        clusterName: '$(devClusterName)'
+
+# Staging Environment Deployment
+- stage: DeployStaging
+  displayName: 'Deploy to Staging'
+  dependsOn: DeployDev
+  condition: and(succeeded(), eq('${{ parameters.deployToStaging }}', true))
+  variables:
+  - template: variables/staging.yml
+  jobs:
+  - deployment: DeployToStagingEnvironment
+    displayName: 'Deploy to Staging Environment'
+    environment: 'Staging'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - template: templates/deploy-environment.yml
+            parameters:
+              environment: 'staging'
+              serviceConnection: '$(stagingServiceConnection)'
+              subscriptionId: '$(stagingSubscriptionId)'
+              resourceGroupName: '$(stagingResourceGroupName)'
+              storageAccountName: '$(stagingStorageAccountName)'
+              containerName: '$(stagingContainerName)'
+              stateKey: 'staging/terraform.tfstate'
+              terraformVarsFile: 'environments/staging/terraform.tfvars'
+              autoApprove: false
+
+  - job: PostDeploymentTestsStaging
+    displayName: 'Post-Deployment Tests - Staging'
+    dependsOn: DeployToStagingEnvironment
+    steps:
+    - template: templates/post-deploy-tests.yml
+      parameters:
+        environment: 'staging'
+        resourceGroupName: '$(stagingResourceGroupName)'
+        clusterName: '$(stagingClusterName)'
+
+# Production Environment Deployment
+- stage: DeployProduction
+  displayName: 'Deploy to Production'
+  dependsOn: DeployStaging
+  condition: and(succeeded(), eq('${{ parameters.deployToProduction }}', true))
+  variables:
+  - template: variables/prod.yml
+  jobs:
+  - deployment: DeployToProductionEnvironment
+    displayName: 'Deploy to Production Environment'
+    environment: 'Production'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - template: templates/deploy-environment.yml
+            parameters:
+              environment: 'prod'
+              serviceConnection: '$(prodServiceConnection)'
+              subscriptionId: '$(prodSubscriptionId)'
+              resourceGroupName: '$(prodResourceGroupName)'
+              storageAccountName: '$(prodStorageAccountName)'
+              containerName: '$(prodContainerName)'
+              stateKey: 'prod/terraform.tfstate'
+              terraformVarsFile: 'environments/prod/terraform.tfvars'
+              autoApprove: false
+
+  - job: PostDeploymentTestsProduction
+    displayName: 'Post-Deployment Tests - Production'
+    dependsOn: DeployToProductionEnvironment
+    steps:
+    - template: templates/post-deploy-tests.yml
+      parameters:
+        environment: 'prod'
+        resourceGroupName: '$(prodResourceGroupName)'
+        clusterName: '$(prodClusterName)'
+
+# Post-Deployment Monitoring Setup
+- stage: PostDeploymentSetup
+  displayName: 'Post-Deployment Setup'
+  dependsOn: 
+  - DeployDev
+  - DeployStaging
+  - DeployProduction
+  condition: or(succeeded('DeployDev'), succeeded('DeployStaging'), succeeded('DeployProduction'))
+  jobs:
+  - job: SetupMonitoring
+    displayName: 'Setup Monitoring and Alerts'
+    steps:
+    - checkout: self
+    
+    - task: AzureCLI@2
+      displayName: 'Configure Monitoring Dashboards'
+      inputs:
+        azureSubscription: '$(prodServiceConnection)'
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          # Create custom dashboards for monitoring
+          echo "Setting up monitoring dashboards..."
+          
+          # Configure Log Analytics queries
+          echo "Configuring Log Analytics queries..."
+          
+          # Setup alert rules
+          echo "Setting up alert rules..."
+          
+          # Configure action groups
+          echo "Configuring action groups..."
+
+  - job: NotifyTeams
+    displayName: 'Notify Teams'
+    dependsOn: SetupMonitoring
+    steps:
+    - task: InvokeRESTAPI@1
+      displayName: 'Notify Microsoft Teams'
+      inputs:
+        connectionType: 'connectedServiceName'
+        serviceConnection: '$(teamsWebhookConnection)'
+        method: 'POST'
+        headers: |
+          Content-Type: application/json
+        body: |
+          {
+            "@type": "MessageCard",
+            "@context": "http://schema.org/extensions",
+            "themeColor": "0076D7",
+            "summary": "Azure Infrastructure Deployment Complete",
+            "sections": [{
+              "activityTitle": "Azure Infrastructure Deployment",
+              "activitySubtitle": "Deployment completed successfully",
+              "activityImage": "https://teamsnodesample.azurewebsites.net/static/img/image5.png",
+              "facts": [{
+                "name": "Environment",
+                "value": "$(environment)"
+              }, {
+                "name": "Build Number",
+                "value": "$(Build.BuildNumber)"
+              }, {
+                "name": "Source Branch",
+                "value": "$(Build.SourceBranch)"
+              }, {
+                "name": "Deployed By",
+                "value": "$(Build.RequestedFor)"
+              }],
+              "markdown": true
+            }],
+            "potentialAction": [{
+              "@type": "OpenUri",
+              "name": "View Build",
+              "targets": [{
+                "os": "default",
+                "uri": "$(System.TeamFoundationCollectionUri)$(System.TeamProject)/_build/results?buildId=$(Build.BuildId)"
+              }]
+            }]
+          }
+        waitForCompletion: 'false'

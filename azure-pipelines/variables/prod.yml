@@ -1,0 +1,195 @@
+# Production Environment Variables
+# This file contains variables specific to the production environment
+
+variables:
+  # Environment Configuration
+  environment: 'prod'
+  environmentDisplayName: 'Production'
+  
+  # Azure Subscription Configuration
+  prodServiceConnection: 'Azure-Prod-ServiceConnection'
+  prodSubscriptionId: '$(PROD_SUBSCRIPTION_ID)'
+  prodTenantId: '$(PROD_TENANT_ID)'
+  
+  # Resource Group Configuration
+  prodResourceGroupName: 'openwebui-prod-rg'
+  prodLocation: 'eastus'
+  prodSecondaryLocation: 'westus2'
+  
+  # AKS Configuration
+  prodClusterName: 'openwebui-prod-aks'
+  prodKubernetesVersion: '1.27'
+  prodNodeCount: 5
+  prodVmSize: 'Standard_D8s_v3'
+  prodMinNodeCount: 3
+  prodMaxNodeCount: 20
+  
+  # Network Configuration
+  prodVnetName: 'openwebui-prod-vnet'
+  prodVnetCidr: '10.2.0.0/16'
+  prodPrivateSubnets: '["10.2.1.0/24", "10.2.2.0/24", "10.2.3.0/24"]'
+  prodPublicSubnets: '["10.2.101.0/24", "10.2.102.0/24", "10.2.103.0/24"]'
+  
+  # Database Configuration
+  prodDatabaseName: 'openwebui_prod'
+  prodDatabaseUsername: 'dbadmin'
+  prodPostgresVersion: '15'
+  prodDatabaseSku: 'GP_Standard_D4s_v3'
+  prodDatabaseStorageMb: 524288
+  prodDatabaseBackupRetentionDays: 35
+  prodDatabaseGeoRedundantBackup: true
+  prodDatabaseHighAvailability: true
+  
+  # Storage Configuration (Terraform State)
+  prodStorageAccountName: 'tfstateprodsa$(uniqueString)'
+  prodContainerName: 'tfstate'
+  prodStateKey: 'prod/terraform.tfstate'
+  
+  # OpenAI Configuration
+  prodOpenAILocation: 'eastus'
+  prodOpenAISkuName: 'S0'
+  prodOpenAISecondaryLocation: 'westus2'
+  
+  # Monitoring Configuration
+  prodLogAnalyticsRetentionDays: 90
+  prodEnableDetailedMonitoring: true
+  prodEnableAdvancedThreatProtection: true
+  
+  # Security Configuration
+  prodEnablePrivateEndpoints: true
+  prodAllowAzureServices: false
+  prodEnableAzureAD: true
+  prodEnableKeyVault: true
+  prodEnableManagedIdentity: true
+  
+  # Cost Configuration
+  prodBudgetAmount: 2000
+  prodCostAlertThreshold: 70
+  
+  # Deployment Configuration
+  prodAutoApprove: false
+  prodSkipManualValidation: false
+  prodEnableRollback: true
+  prodRequireApproval: true
+  
+  # Testing Configuration
+  prodRunIntegrationTests: true
+  prodRunPerformanceTests: true
+  prodRunSecurityTests: true
+  prodRunSmokeTests: true
+  
+  # Application Configuration
+  prodApplicationReplicas: 5
+  prodApplicationCpuLimit: '2000m'
+  prodApplicationMemoryLimit: '4Gi'
+  prodApplicationCpuRequest: '1000m'
+  prodApplicationMemoryRequest: '2Gi'
+  
+  # Ingress Configuration
+  prodIngressEnabled: true
+  prodIngressHost: 'openwebui.company.com'
+  prodTlsEnabled: true
+  prodWafEnabled: true
+  
+  # Backup Configuration
+  prodBackupEnabled: true
+  prodBackupSchedule: '0 0 * * *'  # Daily at midnight
+  prodBackupRetentionDays: 90
+  prodCrossRegionBackup: true
+  
+  # Scaling Configuration
+  prodHpaEnabled: true
+  prodHpaMinReplicas: 3
+  prodHpaMaxReplicas: 15
+  prodHpaTargetCpuUtilization: 60
+  prodHpaTargetMemoryUtilization: 70
+  
+  # High Availability Configuration
+  prodEnableHA: true
+  prodAvailabilityZones: '["1", "2", "3"]'
+  prodMultiRegion: true
+  
+  # Performance Configuration
+  prodEnablePerformanceMonitoring: true
+  prodPerformanceThresholds: |
+    cpu: 70
+    memory: 80
+    disk: 85
+    network: 70
+  prodEnableAPM: true
+  
+  # Security Hardening
+  prodEnableNetworkPolicies: true
+  prodEnablePodSecurityPolicies: true
+  prodEnableImageScanning: true
+  prodEnableRuntimeSecurity: true
+  prodEnableVulnerabilityScanning: true
+  
+  # Compliance Configuration
+  prodEnableAuditLogging: true
+  prodComplianceFramework: 'SOC2,PCI-DSS,HIPAA'
+  prodEnableDataEncryption: true
+  prodEnableDataClassification: true
+  
+  # Disaster Recovery
+  prodEnableDR: true
+  prodDRRegion: 'westus2'
+  prodRPO: 1  # hour
+  prodRTO: 1  # hour
+  prodDRTesting: true
+  
+  # Load Balancing Configuration
+  prodEnableLoadBalancer: true
+  prodLoadBalancerType: 'Standard'
+  prodEnableTrafficManager: true
+  
+  # CDN Configuration
+  prodEnableCDN: true
+  prodCDNProfile: 'Premium_Verizon'
+  
+  # SSL/TLS Configuration
+  prodSSLPolicy: 'TLS12'
+  prodCertificateSource: 'KeyVault'
+  
+  # Rate Limiting
+  prodEnableRateLimit: true
+  prodRateLimitRpm: 1000
+  
+  # Caching Configuration
+  prodEnableRedis: true
+  prodRedisSku: 'Premium'
+  prodRedisCapacity: 6
+  
+  # Search Configuration
+  prodEnableSearch: true
+  prodSearchSku: 'Standard'
+  prodSearchReplicas: 3
+  prodSearchPartitions: 3
+  
+  # Analytics Configuration
+  prodEnableAnalytics: true
+  prodAnalyticsRetentionDays: 730
+  
+  # Alerting Configuration
+  prodEnableAlerting: true
+  prodAlertChannels: 'email,teams,pagerduty'
+  prodCriticalAlertEscalation: true
+  
+  # Maintenance Configuration
+  prodMaintenanceWindow: 'Sunday 02:00-04:00 UTC'
+  prodAutoPatching: true
+  prodPatchingSchedule: 'Monthly'
+  
+  # Capacity Planning
+  prodCapacityPlanningEnabled: true
+  prodGrowthRate: 20  # percent per year
+  prodCapacityBuffer: 30  # percent
+  
+  # Business Continuity
+  prodBusinessContinuityPlan: true
+  prodIncidentResponsePlan: true
+  prodChangeManagementProcess: true
+  
+  # Cleanup Configuration
+  prodAutoCleanup: false
+  prodRetentionDays: 365

@@ -1,0 +1,151 @@
+# Terraform Validation Template
+# This template validates Terraform code syntax, formatting, and configuration
+
+steps:
+- checkout: self
+
+- task: TerraformInstaller@0
+  displayName: 'Install Terraform'
+  inputs:
+    terraformVersion: '$(terraformVersion)'
+
+- task: AzureCLI@2
+  displayName: 'Azure CLI Login'
+  inputs:
+    azureSubscription: '$(devServiceConnection)'
+    scriptType: 'bash'
+    scriptLocation: 'inlineScript'
+    inlineScript: |
+      echo "Azure CLI logged in successfully"
+      az account show
+
+- script: |
+    echo "Validating Terraform code formatting..."
+    cd terraform
+    terraform fmt -check -recursive
+    if [ $? -ne 0 ]; then
+      echo "##vso[task.logissue type=error]Terraform code is not properly formatted. Run 'terraform fmt -recursive' to fix."
+      exit 1
+    fi
+    echo "Terraform formatting validation passed"
+  displayName: 'Check Terraform Formatting'
+
+- script: |
+    echo "Installing TFLint..."
+    curl -s https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash
+    
+    echo "Running TFLint validation..."
+    cd terraform
+    tflint --init
+    tflint --recursive --format=junit > $(Agent.TempDirectory)/tflint-results.xml
+    
+    # Also output to console for immediate feedback
+    tflint --recursive
+  displayName: 'Run TFLint Validation'
+  continueOnError: true
+
+- task: PublishTestResults@2
+  displayName: 'Publish TFLint Results'
+  condition: always()
+  inputs:
+    testResultsFormat: 'JUnit'
+    testResultsFiles: '$(Agent.TempDirectory)/tflint-results.xml'
+    testRunTitle: 'TFLint Validation Results'
+    failTaskOnFailedTests: true
+
+- script: |
+    echo "Validating Terraform configuration..."
+    cd terraform
+    
+    # Initialize Terraform (without backend for validation)
+    terraform init -backend=false
+    
+    # Validate configuration
+    terraform validate
+    
+    if [ $? -eq 0 ]; then
+      echo "Terraform validation passed"
+    else
+      echo "##vso[task.logissue type=error]Terraform validation failed"
+      exit 1
+    fi
+  displayName: 'Validate Terraform Configuration'
+
+- script: |
+    echo "Generating Terraform plan for validation..."
+    cd terraform
+    
+    # Initialize with backend for plan generation
+    terraform init \
+      -backend-config="resource_group_name=$(devResourceGroupName)" \
+      -backend-config="storage_account_name=$(devStorageAccountName)" \
+      -backend-config="container_name=$(devContainerName)" \
+      -backend-config="key=validation/terraform.tfstate"
+    
+    # Generate plan
+    terraform plan \
+      -var-file="environments/dev/terraform.tfvars" \
+      -out=tfplan \
+      -detailed-exitcode
+    
+    # Save plan output for review
+    terraform show -json tfplan > $(Agent.TempDirectory)/terraform-plan.json
+    terraform show tfplan > $(Agent.TempDirectory)/terraform-plan.txt
+    
+    echo "Terraform plan generated successfully"
+  displayName: 'Generate Terraform Plan'
+  env:
+    ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+    ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+    ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+    ARM_TENANT_ID: $(ARM_TENANT_ID)
+
+- task: PublishBuildArtifacts@1
+  displayName: 'Publish Terraform Plan'
+  inputs:
+    PathtoPublish: '$(Agent.TempDirectory)'
+    ArtifactName: 'terraform-plan'
+    publishLocation: 'Container'
+
+- script: |
+    echo "Installing terraform-docs..."
+    curl -sSLo ./terraform-docs.tar.gz https://terraform-docs.io/dl/v0.16.0/terraform-docs-v0.16.0-$(uname)-amd64.tar.gz
+    tar -xzf terraform-docs.tar.gz
+    chmod +x terraform-docs
+    sudo mv terraform-docs /usr/local/bin/
+    
+    echo "Generating Terraform documentation..."
+    cd terraform
+    
+    # Generate documentation for main module
+    terraform-docs markdown table --output-file README.md .
+    
+    # Generate documentation for each module
+    for module in modules/*/; do
+      if [ -d "$module" ]; then
+        echo "Generating docs for $module"
+        terraform-docs markdown table --output-file README.md "$module"
+      fi
+    done
+    
+    echo "Terraform documentation generated"
+  displayName: 'Generate Terraform Documentation'
+  continueOnError: true
+
+- script: |
+    echo "Running Terraform module validation..."
+    cd terraform
+    
+    # Validate each module individually
+    for module in modules/*/; do
+      if [ -d "$module" ]; then
+        echo "Validating module: $module"
+        cd "$module"
+        terraform init -backend=false
+        terraform validate
+        cd - > /dev/null
+      fi
+    done
+    
+    echo "All modules validated successfully"
+  displayName: 'Validate Terraform Modules'

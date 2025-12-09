@@ -1,0 +1,195 @@
+# CI Pipeline for Azure Infrastructure
+# This pipeline validates, tests, and builds the Terraform infrastructure code
+
+trigger:
+  branches:
+    include:
+    - main
+    - develop
+    - feature/*
+  paths:
+    include:
+    - terraform/**
+    - azure-pipelines/**
+
+pr:
+  branches:
+    include:
+    - main
+    - develop
+  paths:
+    include:
+    - terraform/**
+
+variables:
+- template: variables/common.yml
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+stages:
+- stage: Validate
+  displayName: 'Validate Infrastructure Code'
+  jobs:
+  - job: TerraformValidate
+    displayName: 'Terraform Validation'
+    steps:
+    - template: templates/terraform-validate.yml
+
+  - job: SecurityScan
+    displayName: 'Security Scanning'
+    dependsOn: TerraformValidate
+    steps:
+    - template: templates/security-scan.yml
+
+- stage: Test
+  displayName: 'Test Infrastructure Code'
+  dependsOn: Validate
+  condition: succeeded()
+  jobs:
+  - job: UnitTests
+    displayName: 'Unit Tests'
+    steps:
+    - checkout: self
+    
+    - task: TerraformInstaller@0
+      displayName: 'Install Terraform'
+      inputs:
+        terraformVersion: '$(terraformVersion)'
+    
+    - task: GoTool@0
+      displayName: 'Install Go'
+      inputs:
+        version: '$(goVersion)'
+    
+    - script: |
+        cd terraform/tests
+        go mod init terraform-tests
+        go mod tidy
+        go test -v -timeout 30m
+      displayName: 'Run Terratest Unit Tests'
+      env:
+        ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+        ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+        ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+        ARM_TENANT_ID: $(ARM_TENANT_ID)
+
+  - job: IntegrationTests
+    displayName: 'Integration Tests'
+    dependsOn: UnitTests
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/develop'))
+    steps:
+    - checkout: self
+    
+    - task: TerraformInstaller@0
+      displayName: 'Install Terraform'
+      inputs:
+        terraformVersion: '$(terraformVersion)'
+    
+    - script: |
+        cd terraform/tests/integration
+        go mod init integration-tests
+        go mod tidy
+        go test -v -timeout 60m
+      displayName: 'Run Integration Tests'
+      env:
+        ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+        ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+        ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
+        ARM_TENANT_ID: $(ARM_TENANT_ID)
+
+- stage: Build
+  displayName: 'Build Artifacts'
+  dependsOn: Test
+  condition: succeeded()
+  jobs:
+  - job: BuildArtifacts
+    displayName: 'Build and Publish Artifacts'
+    steps:
+    - checkout: self
+    
+    - task: ArchiveFiles@2
+      displayName: 'Archive Terraform Code'
+      inputs:
+        rootFolderOrFile: 'terraform'
+        includeRootFolder: false
+        archiveType: 'zip'
+        archiveFile: '$(Build.ArtifactStagingDirectory)/terraform-$(Build.BuildNumber).zip'
+        replaceExistingArchive: true
+    
+    - task: ArchiveFiles@2
+      displayName: 'Archive Pipeline Scripts'
+      inputs:
+        rootFolderOrFile: 'azure-pipelines/scripts'
+        includeRootFolder: false
+        archiveType: 'zip'
+        archiveFile: '$(Build.ArtifactStagingDirectory)/scripts-$(Build.BuildNumber).zip'
+        replaceExistingArchive: true
+    
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Terraform Artifacts'
+      inputs:
+        PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+        ArtifactName: 'terraform-infrastructure'
+        publishLocation: 'Container'
+
+- stage: QualityGate
+  displayName: 'Quality Gate'
+  dependsOn: Build
+  condition: succeeded()
+  jobs:
+  - job: QualityGateCheck
+    displayName: 'Quality Gate Validation'
+    steps:
+    - checkout: self
+    
+    - task: SonarQubePrepare@4
+      displayName: 'Prepare SonarQube Analysis'
+      inputs:
+        SonarQube: '$(sonarQubeServiceConnection)'
+        scannerMode: 'CLI'
+        configMode: 'manual'
+        cliProjectKey: '$(sonarQubeProjectKey)'
+        cliProjectName: 'Azure Infrastructure'
+        cliSources: 'terraform'
+        extraProperties: |
+          sonar.exclusions=**/*.zip,**/*.tar.gz,**/.terraform/**
+          sonar.terraform.file.suffixes=.tf,.tfvars
+    
+    - task: SonarQubeAnalyze@4
+      displayName: 'Run SonarQube Analysis'
+    
+    - task: SonarQubePublish@4
+      displayName: 'Publish SonarQube Results'
+      inputs:
+        pollingTimeoutSec: '300'
+    
+    - task: sonarqube-quality-gate-check@0
+      displayName: 'Check SonarQube Quality Gate'
+      inputs:
+        sonarqube: '$(sonarQubeServiceConnection)'
+
+- stage: TriggerCD
+  displayName: 'Trigger CD Pipeline'
+  dependsOn: QualityGate
+  condition: and(succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['Build.SourceBranch'], 'refs/heads/develop')))
+  jobs:
+  - job: TriggerDeployment
+    displayName: 'Trigger CD Pipeline'
+    steps:
+    - task: TriggerBuild@3
+      displayName: 'Trigger CD Pipeline'
+      inputs:
+        definitionIsInCurrentTeamProject: true
+        buildDefinition: 'CD-Pipeline'
+        queueBuildForUserThatTriggeredBuild: true
+        ignoreSslCertificateErrors: false
+        useSameSourceVersion: true
+        useCustomSourceVersion: false
+        useSameBranch: true
+        waitForQueuedBuildsToFinish: false
+        storeInEnvironmentVariable: false
+        buildParameters: |
+          sourceVersion: $(Build.SourceVersion)
+          sourceBranch: $(Build.SourceBranch)
+          buildNumber: $(Build.BuildNumber)

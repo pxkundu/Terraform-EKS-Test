@@ -1,0 +1,98 @@
+# Development Environment Variables
+# This file contains variables specific to the development environment
+
+variables:
+  # Environment Configuration
+  environment: 'dev'
+  environmentDisplayName: 'Development'
+  
+  # Azure Subscription Configuration
+  devServiceConnection: 'Azure-Dev-ServiceConnection'
+  devSubscriptionId: '$(DEV_SUBSCRIPTION_ID)'
+  devTenantId: '$(DEV_TENANT_ID)'
+  
+  # Resource Group Configuration
+  devResourceGroupName: 'openwebui-dev-rg'
+  devLocation: 'eastus'
+  
+  # AKS Configuration
+  devClusterName: 'openwebui-dev-aks'
+  devKubernetesVersion: '1.27'
+  devNodeCount: 2
+  devVmSize: 'Standard_D2s_v3'
+  devMinNodeCount: 1
+  devMaxNodeCount: 5
+  
+  # Network Configuration
+  devVnetName: 'openwebui-dev-vnet'
+  devVnetCidr: '10.0.0.0/16'
+  devPrivateSubnets: '["10.0.1.0/24", "10.0.2.0/24"]'
+  devPublicSubnets: '["10.0.101.0/24", "10.0.102.0/24"]'
+  
+  # Database Configuration
+  devDatabaseName: 'openwebui_dev'
+  devDatabaseUsername: 'dbadmin'
+  devPostgresVersion: '15'
+  devDatabaseSku: 'B_Standard_B1ms'
+  devDatabaseStorageMb: 32768
+  devDatabaseBackupRetentionDays: 7
+  devDatabaseGeoRedundantBackup: false
+  
+  # Storage Configuration (Terraform State)
+  devStorageAccountName: 'tfstatedevsa$(uniqueString)'
+  devContainerName: 'tfstate'
+  devStateKey: 'dev/terraform.tfstate'
+  
+  # OpenAI Configuration
+  devOpenAILocation: 'eastus'
+  devOpenAISkuName: 'S0'
+  
+  # Monitoring Configuration
+  devLogAnalyticsRetentionDays: 30
+  devEnableDetailedMonitoring: false
+  
+  # Security Configuration
+  devEnablePrivateEndpoints: false
+  devAllowAzureServices: true
+  devEnableAzureAD: false
+  
+  # Cost Configuration
+  devBudgetAmount: 200
+  devCostAlertThreshold: 80
+  
+  # Deployment Configuration
+  devAutoApprove: true
+  devSkipManualValidation: true
+  devEnableRollback: true
+  
+  # Testing Configuration
+  devRunIntegrationTests: false
+  devRunPerformanceTests: false
+  devRunSecurityTests: true
+  
+  # Application Configuration
+  devApplicationReplicas: 1
+  devApplicationCpuLimit: '500m'
+  devApplicationMemoryLimit: '1Gi'
+  devApplicationCpuRequest: '250m'
+  devApplicationMemoryRequest: '512Mi'
+  
+  # Ingress Configuration
+  devIngressEnabled: true
+  devIngressHost: 'openwebui-dev.local'
+  devTlsEnabled: false
+  
+  # Backup Configuration
+  devBackupEnabled: false
+  devBackupSchedule: '0 2 * * *'  # Daily at 2 AM
+  
+  # Scaling Configuration
+  devHpaEnabled: false
+  devHpaMinReplicas: 1
+  devHpaMaxReplicas: 3
+  devHpaTargetCpuUtilization: 70
+  
+  # Cleanup Configuration
+  devAutoCleanup: true
+  devCleanupSchedule: '0 0 * * 0'  # Weekly on Sunday
+  devRetentionDays: 7

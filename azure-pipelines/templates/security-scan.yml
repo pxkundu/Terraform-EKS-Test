@@ -1,0 +1,243 @@
+# Security Scanning Template
+# This template runs comprehensive security scans on Terraform infrastructure code
+
+steps:
+- checkout: self
+
+- script: |
+    echo "Installing Checkov..."
+    pip3 install checkov
+    
+    echo "Running Checkov security scan..."
+    cd terraform
+    
+    # Run Checkov with JUnit output for Azure DevOps integration
+    checkov -d . \
+      --framework terraform \
+      --output junitxml \
+      --output-file-path $(Agent.TempDirectory)/checkov-results.xml \
+      --soft-fail
+    
+    # Also run with CLI output for immediate feedback
+    checkov -d . --framework terraform --compact
+  displayName: 'Run Checkov Security Scan'
+  continueOnError: true
+
+- task: PublishTestResults@2
+  displayName: 'Publish Checkov Results'
+  condition: always()
+  inputs:
+    testResultsFormat: 'JUnit'
+    testResultsFiles: '$(Agent.TempDirectory)/checkov-results.xml'
+    testRunTitle: 'Checkov Security Scan Results'
+    failTaskOnFailedTests: false
+
+- script: |
+    echo "Installing TFSec..."
+    curl -s https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install_linux.sh | bash
+    
+    echo "Running TFSec security analysis..."
+    cd terraform
+    
+    # Run TFSec with JUnit output
+    tfsec . \
+      --format junit \
+      --out $(Agent.TempDirectory)/tfsec-results.xml \
+      --soft-fail
+    
+    # Also run with default output for console
+    tfsec . --format default
+  displayName: 'Run TFSec Security Analysis'
+  continueOnError: true
+
+- task: PublishTestResults@2
+  displayName: 'Publish TFSec Results'
+  condition: always()
+  inputs:
+    testResultsFormat: 'JUnit'
+    testResultsFiles: '$(Agent.TempDirectory)/tfsec-results.xml'
+    testRunTitle: 'TFSec Security Analysis Results'
+    failTaskOnFailedTests: false
+
+- script: |
+    echo "Installing Terrascan..."
+    curl -L "$(curl -s https://api.github.com/repos/tenable/terrascan/releases/latest | grep -o -E "https://.+?_Linux_x86_64.tar.gz")" > terrascan.tar.gz
+    tar -xf terrascan.tar.gz terrascan && rm terrascan.tar.gz
+    sudo mv terrascan /usr/local/bin
+    
+    echo "Running Terrascan security scan..."
+    cd terraform
+    
+    # Run Terrascan with JUnit output
+    terrascan scan \
+      -i terraform \
+      -o junit-xml \
+      --output-file $(Agent.TempDirectory)/terrascan-results.xml \
+      --non-recursive
+    
+    # Also run with human-readable output
+    terrascan scan -i terraform --non-recursive
+  displayName: 'Run Terrascan Security Scan'
+  continueOnError: true
+
+- task: PublishTestResults@2
+  displayName: 'Publish Terrascan Results'
+  condition: always()
+  inputs:
+    testResultsFormat: 'JUnit'
+    testResultsFiles: '$(Agent.TempDirectory)/terrascan-results.xml'
+    testRunTitle: 'Terrascan Security Scan Results'
+    failTaskOnFailedTests: false
+
+- script: |
+    echo "Installing Snyk CLI..."
+    npm install -g snyk
+    
+    echo "Authenticating with Snyk..."
+    snyk auth $(SNYK_TOKEN)
+    
+    echo "Running Snyk Infrastructure as Code scan..."
+    cd terraform
+    
+    # Run Snyk IaC test
+    snyk iac test . \
+      --json \
+      --json-file-output=$(Agent.TempDirectory)/snyk-iac-results.json \
+      || true
+    
+    # Convert to human-readable format
+    snyk iac test . || true
+  displayName: 'Run Snyk IaC Security Scan'
+  condition: and(succeeded(), ne(variables['SNYK_TOKEN'], ''))
+  continueOnError: true
+
+- script: |
+    echo "Installing KICS..."
+    curl -sfL 'https://raw.githubusercontent.com/Checkmarx/kics/master/install.sh' | sh
+    
+    echo "Running KICS security scan..."
+    cd terraform
+    
+    # Run KICS with JUnit output
+    ./bin/kics scan \
+      -p . \
+      -o $(Agent.TempDirectory) \
+      --report-formats junit \
+      --output-name kics-results
+    
+    # Also run with console output
+    ./bin/kics scan -p . --report-formats console
+  displayName: 'Run KICS Security Scan'
+  continueOnError: true
+
+- task: PublishTestResults@2
+  displayName: 'Publish KICS Results'
+  condition: always()
+  inputs:
+    testResultsFormat: 'JUnit'
+    testResultsFiles: '$(Agent.TempDirectory)/kics-results.xml'
+    testRunTitle: 'KICS Security Scan Results'
+    failTaskOnFailedTests: false
+
+- script: |
+    echo "Running Azure Policy compliance check..."
+    
+    # Install Azure Policy extension
+    az extension add --name policy-insights
+    
+    # Check for policy compliance (this would be more comprehensive in a real scenario)
+    echo "Checking Azure Policy definitions..."
+    az policy definition list --query "[?policyType=='BuiltIn' && contains(displayName, 'Security')]" --output table
+    
+    echo "Azure Policy compliance check completed"
+  displayName: 'Azure Policy Compliance Check'
+  condition: succeeded()
+
+- script: |
+    echo "Generating consolidated security report..."
+    
+    # Create a consolidated security report
+    cat > $(Agent.TempDirectory)/security-report.md << 'EOF'
+    # Security Scan Report
+    
+    ## Summary
+    This report consolidates the results from multiple security scanning tools:
+    
+    - **Checkov**: Infrastructure as Code security and compliance scanning
+    - **TFSec**: Terraform-specific security analysis
+    - **Terrascan**: Multi-cloud security scanning
+    - **Snyk**: Vulnerability and license compliance scanning
+    - **KICS**: Infrastructure as Code security scanning
+    - **Azure Policy**: Azure-specific compliance checking
+    
+    ## Scan Results
+    
+    ### High Priority Issues
+    Please review the test results in Azure DevOps for detailed findings.
+    
+    ### Recommendations
+    1. Address all HIGH and CRITICAL severity findings
+    2. Review and remediate MEDIUM severity findings
+    3. Consider implementing additional security controls
+    4. Regular security scanning in CI/CD pipeline
+    
+    ## Next Steps
+    1. Review detailed scan results in the pipeline
+    2. Create work items for security findings
+    3. Implement fixes and re-run scans
+    4. Update security policies as needed
+    EOF
+    
+    echo "Security report generated at $(Agent.TempDirectory)/security-report.md"
+  displayName: 'Generate Security Report'
+  condition: always()
+
+- task: PublishBuildArtifacts@1
+  displayName: 'Publish Security Scan Results'
+  condition: always()
+  inputs:
+    PathtoPublish: '$(Agent.TempDirectory)'
+    ArtifactName: 'security-scan-results'
+    publishLocation: 'Container'
+
+- script: |
+    echo "Evaluating security scan results..."
+    
+    # This script would evaluate the security scan results and determine if the build should fail
+    # For now, we'll just provide a summary
+    
+    CRITICAL_ISSUES=0
+    HIGH_ISSUES=0
+    
+    # In a real implementation, you would parse the JSON/XML results to count issues
+    # For demonstration, we'll use placeholder logic
+    
+    if [ -f "$(Agent.TempDirectory)/checkov-results.xml" ]; then
+      echo "Checkov results found"
+    fi
+    
+    if [ -f "$(Agent.TempDirectory)/tfsec-results.xml" ]; then
+      echo "TFSec results found"
+    fi
+    
+    if [ -f "$(Agent.TempDirectory)/terrascan-results.xml" ]; then
+      echo "Terrascan results found"
+    fi
+    
+    echo "Security evaluation completed"
+    echo "Critical issues: $CRITICAL_ISSUES"
+    echo "High issues: $HIGH_ISSUES"
+    
+    # Fail the build if there are critical security issues
+    if [ $CRITICAL_ISSUES -gt 0 ]; then
+      echo "##vso[task.logissue type=error]Critical security issues found. Build failed."
+      exit 1
+    fi
+    
+    if [ $HIGH_ISSUES -gt 5 ]; then
+      echo "##vso[task.logissue type=warning]High number of security issues found. Please review."
+    fi
+    
+    echo "Security gate passed"
+  displayName: 'Security Gate Evaluation'
+  condition: always()

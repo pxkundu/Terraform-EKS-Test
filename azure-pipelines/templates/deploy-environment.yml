@@ -1,0 +1,268 @@
+# Environment Deployment Template
+# This template deploys Terraform infrastructure to a specific environment
+
+parameters:
+- name: environment
+  type: string
+- name: serviceConnection
+  type: string
+- name: subscriptionId
+  type: string
+- name: resourceGroupName
+  type: string
+- name: storageAccountName
+  type: string
+- name: containerName
+  type: string
+- name: stateKey
+  type: string
+- name: terraformVarsFile
+  type: string
+- name: autoApprove
+  type: boolean
+  default: false
+
+steps:
+- checkout: self
+
+- task: TerraformInstaller@0
+  displayName: 'Install Terraform'
+  inputs:
+    terraformVersion: '$(terraformVersion)'
+
+- task: AzureCLI@2
+  displayName: 'Setup Azure CLI'
+  inputs:
+    azureSubscription: '${{ parameters.serviceConnection }}'
+    scriptType: 'bash'
+    scriptLocation: 'inlineScript'
+    inlineScript: |
+      echo "Setting up Azure CLI for deployment..."
+      az account show
+      echo "Subscription: ${{ parameters.subscriptionId }}"
+      echo "Environment: ${{ parameters.environment }}"
+
+- task: PowerShell@2
+  displayName: 'Initialize Terraform Backend'
+  inputs:
+    targetType: 'filePath'
+    filePath: '$(System.DefaultWorkingDirectory)/scripts/terraform-init.ps1'
+    arguments: >
+      -ResourceGroupName "${{ parameters.resourceGroupName }}"
+      -StorageAccountName "${{ parameters.storageAccountName }}"
+      -ContainerName "${{ parameters.containerName }}"
+      -StateKey "${{ parameters.stateKey }}"
+      -Environment "${{ parameters.environment }}"
+  env:
+    ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+    ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+    ARM_SUBSCRIPTION_ID: ${{ parameters.subscriptionId }}
+    ARM_TENANT_ID: $(ARM_TENANT_ID)
+
+- script: |
+    echo "Initializing Terraform for ${{ parameters.environment }} environment..."
+    cd terraform
+    
+    terraform init \
+      -backend-config="resource_group_name=${{ parameters.resourceGroupName }}" \
+      -backend-config="storage_account_name=${{ parameters.storageAccountName }}" \
+      -backend-config="container_name=${{ parameters.containerName }}" \
+      -backend-config="key=${{ parameters.stateKey }}" \
+      -reconfigure
+    
+    echo "Terraform initialization completed"
+  displayName: 'Terraform Init'
+  env:
+    ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+    ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+    ARM_SUBSCRIPTION_ID: ${{ parameters.subscriptionId }}
+    ARM_TENANT_ID: $(ARM_TENANT_ID)
+
+- script: |
+    echo "Creating Terraform workspace for ${{ parameters.environment }}..."
+    cd terraform
+    
+    # Create or select workspace
+    terraform workspace select ${{ parameters.environment }} || terraform workspace new ${{ parameters.environment }}
+    
+    echo "Current workspace: $(terraform workspace show)"
+  displayName: 'Setup Terraform Workspace'
+  env:
+    ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+    ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+    ARM_SUBSCRIPTION_ID: ${{ parameters.subscriptionId }}
+    ARM_TENANT_ID: $(ARM_TENANT_ID)
+
+- script: |
+    echo "Generating Terraform plan for ${{ parameters.environment }}..."
+    cd terraform
+    
+    terraform plan \
+      -var-file="${{ parameters.terraformVarsFile }}" \
+      -var="environment=${{ parameters.environment }}" \
+      -out=tfplan-${{ parameters.environment }} \
+      -detailed-exitcode
+    
+    PLAN_EXIT_CODE=$?
+    
+    if [ $PLAN_EXIT_CODE -eq 0 ]; then
+      echo "No changes detected in Terraform plan"
+      echo "##vso[task.setvariable variable=TerraformChanges]false"
+    elif [ $PLAN_EXIT_CODE -eq 2 ]; then
+      echo "Changes detected in Terraform plan"
+      echo "##vso[task.setvariable variable=TerraformChanges]true"
+    else
+      echo "Terraform plan failed with exit code $PLAN_EXIT_CODE"
+      exit $PLAN_EXIT_CODE
+    fi
+    
+    # Save plan for review
+    terraform show tfplan-${{ parameters.environment }} > $(Agent.TempDirectory)/terraform-plan-${{ parameters.environment }}.txt
+    terraform show -json tfplan-${{ parameters.environment }} > $(Agent.TempDirectory)/terraform-plan-${{ parameters.environment }}.json
+    
+    echo "Terraform plan completed"
+  displayName: 'Terraform Plan'
+  env:
+    ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+    ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+    ARM_SUBSCRIPTION_ID: ${{ parameters.subscriptionId }}
+    ARM_TENANT_ID: $(ARM_TENANT_ID)
+
+- task: PublishBuildArtifacts@1
+  displayName: 'Publish Terraform Plan'
+  condition: always()
+  inputs:
+    PathtoPublish: '$(Agent.TempDirectory)'
+    ArtifactName: 'terraform-plan-${{ parameters.environment }}'
+    publishLocation: 'Container'
+
+- ${{ if eq(parameters.autoApprove, false) }}:
+  - task: ManualValidation@0
+    displayName: 'Manual Approval for ${{ parameters.environment }}'
+    condition: eq(variables['TerraformChanges'], 'true')
+    inputs:
+      notifyUsers: |
+        $(Build.RequestedForEmail)
+        $(approverEmail)
+      instructions: |
+        Please review the Terraform plan for ${{ parameters.environment }} environment and approve the deployment.
+        
+        **Environment**: ${{ parameters.environment }}
+        **Build**: $(Build.BuildNumber)
+        **Requested by**: $(Build.RequestedFor)
+        
+        Review the plan artifacts before approving.
+      onTimeout: 'reject'
+
+- script: |
+    echo "Applying Terraform configuration for ${{ parameters.environment }}..."
+    cd terraform
+    
+    if [ "$(TerraformChanges)" = "true" ] || [ "${{ parameters.autoApprove }}" = "true" ]; then
+      terraform apply tfplan-${{ parameters.environment }}
+      
+      if [ $? -eq 0 ]; then
+        echo "Terraform apply completed successfully"
+        echo "##vso[task.setvariable variable=DeploymentStatus]success"
+      else
+        echo "Terraform apply failed"
+        echo "##vso[task.setvariable variable=DeploymentStatus]failed"
+        exit 1
+      fi
+    else
+      echo "No changes to apply"
+      echo "##vso[task.setvariable variable=DeploymentStatus]no-changes"
+    fi
+  displayName: 'Terraform Apply'
+  env:
+    ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+    ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+    ARM_SUBSCRIPTION_ID: ${{ parameters.subscriptionId }}
+    ARM_TENANT_ID: $(ARM_TENANT_ID)
+
+- script: |
+    echo "Generating Terraform outputs for ${{ parameters.environment }}..."
+    cd terraform
+    
+    # Generate outputs in JSON format
+    terraform output -json > $(Agent.TempDirectory)/terraform-outputs-${{ parameters.environment }}.json
+    
+    # Generate outputs in human-readable format
+    terraform output > $(Agent.TempDirectory)/terraform-outputs-${{ parameters.environment }}.txt
+    
+    # Extract key outputs for use in subsequent steps
+    CLUSTER_NAME=$(terraform output -raw cluster_name 2>/dev/null || echo "")
+    RESOURCE_GROUP=$(terraform output -raw resource_group_name 2>/dev/null || echo "")
+    
+    if [ -n "$CLUSTER_NAME" ]; then
+      echo "##vso[task.setvariable variable=ClusterName;isOutput=true]$CLUSTER_NAME"
+    fi
+    
+    if [ -n "$RESOURCE_GROUP" ]; then
+      echo "##vso[task.setvariable variable=ResourceGroupName;isOutput=true]$RESOURCE_GROUP"
+    fi
+    
+    echo "Terraform outputs generated"
+  displayName: 'Generate Terraform Outputs'
+  condition: eq(variables['DeploymentStatus'], 'success')
+  env:
+    ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+    ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+    ARM_SUBSCRIPTION_ID: ${{ parameters.subscriptionId }}
+    ARM_TENANT_ID: $(ARM_TENANT_ID)
+
+- task: PublishBuildArtifacts@1
+  displayName: 'Publish Terraform Outputs'
+  condition: always()
+  inputs:
+    PathtoPublish: '$(Agent.TempDirectory)'
+    ArtifactName: 'terraform-outputs-${{ parameters.environment }}'
+    publishLocation: 'Container'
+
+- task: PowerShell@2
+  displayName: 'Post-Deployment Configuration'
+  condition: eq(variables['DeploymentStatus'], 'success')
+  inputs:
+    targetType: 'filePath'
+    filePath: '$(System.DefaultWorkingDirectory)/scripts/post-deploy-config.ps1'
+    arguments: >
+      -Environment "${{ parameters.environment }}"
+      -ResourceGroupName "$(ResourceGroupName)"
+      -ClusterName "$(ClusterName)"
+      -SubscriptionId "${{ parameters.subscriptionId }}"
+
+- script: |
+    echo "Deployment Summary for ${{ parameters.environment }}:"
+    echo "=================================="
+    echo "Environment: ${{ parameters.environment }}"
+    echo "Status: $(DeploymentStatus)"
+    echo "Build Number: $(Build.BuildNumber)"
+    echo "Deployed By: $(Build.RequestedFor)"
+    echo "Deployment Time: $(date)"
+    
+    if [ "$(DeploymentStatus)" = "success" ]; then
+      echo "✅ Deployment completed successfully"
+    elif [ "$(DeploymentStatus)" = "failed" ]; then
+      echo "❌ Deployment failed"
+    else
+      echo "ℹ️ No changes were applied"
+    fi
+    
+    echo "=================================="
+  displayName: 'Deployment Summary'
+  condition: always()
+
+- task: AzureCLI@2
+  displayName: 'Cleanup Temporary Resources'
+  condition: always()
+  inputs:
+    azureSubscription: '${{ parameters.serviceConnection }}'
+    scriptType: 'bash'
+    scriptLocation: 'inlineScript'
+    inlineScript: |
+      echo "Cleaning up temporary resources..."
+      
+      # Clean up any temporary resources created during deployment
+      # This is environment-specific and should be customized
+      
+      echo "Cleanup completed"

@@ -1,0 +1,76 @@
+# Common Variables Template
+# This file contains variables shared across all environments and pipelines
+
+variables:
+  # Tool Versions
+  terraformVersion: '1.6.0'
+  goVersion: '1.21'
+  kubectlVersion: '1.28.0'
+  helmVersion: '3.13.0'
+  
+  # Azure DevOps Configuration
+  vmImage: 'ubuntu-latest'
+  
+  # Build Configuration
+  buildConfiguration: 'Release'
+  
+  # Terraform Configuration
+  terraformWorkingDirectory: '$(System.DefaultWorkingDirectory)/terraform'
+  
+  # Security Scanning Configuration
+  sonarQubeServiceConnection: 'SonarQube-Connection'
+  sonarQubeProjectKey: 'azure-infrastructure'
+  
+  # Notification Configuration
+  teamsWebhookConnection: 'Teams-Webhook'
+  
+  # Artifact Configuration
+  artifactName: 'terraform-infrastructure'
+  
+  # Timeout Configuration
+  jobTimeoutInMinutes: 120
+  
+  # Quality Gate Configuration
+  qualityGateTimeout: 300
+  
+  # Security Configuration
+  enableSecurityScanning: true
+  enableComplianceCheck: true
+  
+  # Monitoring Configuration
+  enableMonitoring: true
+  logRetentionDays: 30
+  
+  # Cost Management
+  enableCostAlerts: true
+  budgetThreshold: 1000
+  
+  # Backup Configuration
+  enableBackup: true
+  backupRetentionDays: 30
+  
+  # Network Configuration
+  enablePrivateEndpoints: true
+  enableNetworkPolicies: true
+  
+  # Application Configuration
+  enableApplicationInsights: true
+  enableLogAnalytics: true
+  
+  # Performance Configuration
+  enableAutoScaling: true
+  minNodeCount: 1
+  maxNodeCount: 10
+  
+  # Security Hardening
+  enableRBAC: true
+  enablePodSecurityPolicies: true
+  enableNetworkSecurityGroups: true
+  
+  # Compliance Configuration
+  enableAzurePolicy: true
+  enableSecurityCenter: true
+  
+  # Disaster Recovery
+  enableGeoRedundancy: true
+  enableCrossRegionBackup: true
